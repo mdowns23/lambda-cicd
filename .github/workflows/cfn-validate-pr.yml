@@ -54,6 +54,7 @@ jobs:
     
   cleanup-on-merge:
     runs-on: ubuntu-latest
+    needs: [validate-and-deploy]
     if: github.event.pull_request.merged == true
     steps:
       - name: Configure AWS Creds
