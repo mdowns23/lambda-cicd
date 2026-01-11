@@ -1,81 +1,35 @@
-
-name: Validate CloudFormation on PR
+name: Deploy PR Preview Stack
 
 on:
   pull_request:
     types: [opened, synchronize, reopened]
     paths:
-      - 'cloudformation/**'
-  pull_request_target: # Using pull_request_target for reliable cleanup
-    types: [closed]
+      - cloudformation/**
 
 permissions:
   pull-requests: write
   contents: read
 
 jobs:
-  validate-and-deploy:
-    # Only run this job if the PR is NOT being closed
-    if: github.event.action != 'closed'
+  deploy:
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v1
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{secrets.AWS_ACCESS_KEY_ID}}
-          aws-secret-access-key: ${{secrets.AWS_SECRET_ACCESS_KEY}}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-west-2
-    
-      - name: Validate CloudFormation Template
-        run: aws cloudformation validate-template --template-body file://cloudformation/s3-bucket.yml
-        
-      - name: Deploy our stack
-        run: |
+
+      - run: aws cloudformation validate-template \
+          --template-body file://cloudformation/s3-bucket.yml
+
+      - run: |
           stack_name="pr-test-stack-${{ github.event.pull_request.number }}"
           aws cloudformation deploy \
             --stack-name $stack_name \
             --template-file cloudformation/s3-bucket.yml \
             --parameter-overrides Environment=test \
             --no-fail-on-empty-changeset
-
-      - name: Comment on the PR
-        uses: actions/github-script@v6
-        with:
-          github-token: ${{secrets.GITHUB_TOKEN}}
-          script: |
-            github.rest.issues.createComment({
-              issue_number: context.payload.pull_request.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: 'Cloudformation test stack deployed/updated. Stack name: pr-test-stack-${{ github.event.pull_request.number }}'
-            })
-    
-  cleanup-on-merge:
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request_target' && github.event.pull_request.merged == true
-
-    steps:
-        - name: Configure AWS Creds
-          uses: aws-actions/configure-aws-credentials@v1
-          with:
-            aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-            aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-            aws-region: us-west-2
-
-        - name: Empty S3 Bucket and Delete Stack
-          run: |
-            stack_name="pr-test-stack-${{ github.event.pull_request.number }}"
-
-            bucket_name=$(aws cloudformation describe-stacks \
-            --stack-name $stack_name \
-            --query "Stacks[0].Outputs[?OutputKey=='BucketName'].OutputValue" \
-            --output text)
-
-            if [ -n "$bucket_name" ] && [ "$bucket_name" != "None" ]; then
-            aws s3 rm s3://$bucket_name --recursive
-            fi
-
-            aws cloudformation delete-stack --stack-name $stack_name
-            aws cloudformation wait stack-delete-complete --stack-name $stack_name
