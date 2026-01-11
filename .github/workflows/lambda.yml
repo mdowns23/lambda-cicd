@@ -6,7 +6,7 @@ on:
     branches: #when code push on main
       - main
     paths: # only when code is changed in lambda
-      - 'lambda/'
+      - 'lambda/**'
 
 jobs:
   deploy-lambda: # name of our job
@@ -28,11 +28,11 @@ jobs:
       uses: aws-actions/configure-aws-credentials@v1
       with:
         aws-access-key-id: ${{secrets.AWS_ACCESS_KEY_ID}}
-        aws-access-secret-key: ${{secrets.AWS_SECRET_ACCESS_KEY}}
+        aws-secret-access-key: ${{secrets.AWS_SECRET_ACCESS_KEY}}
         aws-region: us-west-2
 
     - name: Deploy Lambda Function #zips up lambda function
       run: |
         cd lambda
         zip -r lambda.zip .
-        aws lambda update-function-code --function-name my-test-cicd-lambda  --zip-file file://lambda.zip
+        aws lambda update-function-code --function-name my-test-cicd-lambda  --zip-file fileb://lambda.zip
