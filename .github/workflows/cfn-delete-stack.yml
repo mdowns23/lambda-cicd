@@ -1,0 +1,35 @@
+name: Cleanup PR Stack
+
+on:
+  pull_request_target:
+    types: [closed]
+
+permissions:
+  contents: read
+
+jobs:
+  cleanup:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-west-2
+
+      - run: |
+          stack_name="pr-test-stack-${{ github.event.pull_request.number }}"
+
+          bucket_name=$(aws cloudformation describe-stacks \
+            --stack-name $stack_name \
+            --query "Stacks[0].Outputs[?OutputKey=='BucketName'].OutputValue" \
+            --output text)
+
+          if [ -n "$bucket_name" ] && [ "$bucket_name" != "None" ]; then
+            aws s3 rm s3://$bucket_name --recursive
+          fi
+
+          aws cloudformation delete-stack --stack-name $stack_name
+          aws cloudformation wait stack-delete-complete --stack-name $stack_name
