@@ -3,9 +3,11 @@ name: Validate CloudFormation on PR
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, closed]
+    types: [opened, synchronize, reopened]
     paths:
       - 'cloudformation/**'
+  pull_request_target: # Using pull_request_target for reliable cleanup
+    types: [closed]
 
 permissions:
   pull-requests: write
@@ -52,7 +54,6 @@ jobs:
     
   cleanup-on-merge:
     runs-on: ubuntu-latest
-    # Only run if the PR was actually merged
     if: github.event.pull_request.merged == true
     steps:
       - name: Configure AWS Creds
@@ -66,14 +67,17 @@ jobs:
         run: |
           stack_name="pr-test-stack-${{ github.event.pull_request.number }}"
           
-          # 1. Get the bucket name from stack outputs
-          bucket_name=$(aws cloudformation describe-stacks --stack-name $stack_name --query "Stacks[0].Outputs[?OutputKey=='BucketName'].OutputValue" --output text)
+          # 1. Corrected query syntax with backticks for the key name
+          bucket_name=$(aws cloudformation describe-stacks \
+            --stack-name $stack_name \
+            --query "Stacks[0].Outputs[?OutputKey==`BucketName`].OutputValue" \
+            --output text)
           
           # 2. Empty the bucket (required for deletion to succeed)
-          if [ ! -z "$bucket_name" ]; then
+          if [ ! -z "$bucket_name" ] && [ "$bucket_name" != "None" ]; then
             aws s3 rm s3://$bucket_name --recursive
           fi
           
-          # 3. Delete the stack
+          # 3. Delete the stack and wait for completion
           aws cloudformation delete-stack --stack-name $stack_name
           aws cloudformation wait stack-delete-complete --stack-name $stack_name
